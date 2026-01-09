@@ -14,12 +14,11 @@ type Config struct {
 }
 
 type DatabaseConfig struct {
-	Host     string
-	Port     int
-	User     string
-	Password string
-	DBName   string
-	SSLMode  string
+    Host     string
+    Port     int
+    User     string
+    Password string
+    DBName   string
 }
 
 type RabbitConfig struct {
@@ -44,17 +43,16 @@ type SyncConfig struct {
 }
 
 func Load() *Config {
-	dbPort := intFromEnv("DB_PORT", 5432)
+// 	dbPort := intFromEnv("DB_PORT", 5432)
 	rmqPort := intFromEnv("RABBITMQ_PORT", 5672)
 
 	return &Config{
 		Database: DatabaseConfig{
-			Host:     getenv("DB_HOST", "localhost"),
-			Port:     dbPort,
-			User:     getenv("DB_USER", "postgres"),
-			Password: getenv("DB_PASSWORD", "postgres"),
-			DBName:   getenv("DB_NAME", "balance"),
-			SSLMode:  getenv("DB_SSLMODE", "disable"),
+			Host:     getenv("DB_HOST", "mysql"),
+			Port:     intFromEnv("DB_PORT", 3306),
+			User:     getenv("DB_USER", getenv("DB_USERNAME", "go")),
+			Password: getenv("DB_PASSWORD", "go"),
+			DBName:   getenv("DB_NAME", getenv("DB_DATABASE", "go_db")),
 		},
 		Rabbit: RabbitConfig{
 			Host:     getenv("RABBITMQ_HOST", "localhost"),

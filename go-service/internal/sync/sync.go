@@ -49,6 +49,8 @@ func runSync(
 	ctx, cancel := context.WithTimeout(ctx, syncTimeout)
 	defer cancel()
 
+	startTime := time.Now()
+	
 	total, err := balanceRepo.CountBalances(ctx)
 	if err != nil {
 		log.WithError(err).Error("failed to count balances for cache sync")
@@ -60,16 +62,43 @@ func runSync(
 		return
 	}
 
-	log.WithField("total", total).Debug("starting cache synchronization")
+	log.WithField("total", total).Info("starting cache synchronization")
 
 	var synced int64
 	offset := 0
+	errors := 0
+	maxErrors := 3
 
 	for {
+		// Check context cancellation before each batch
+		select {
+		case <-ctx.Done():
+			log.Info("cache sync cancelled")
+			return
+		default:
+		}
+
 		balances, err := balanceRepo.GetAllBalances(ctx, batchSize, offset)
 		if err != nil {
-			log.WithError(err).Error("failed to fetch balances batch")
-			break
+			errors++
+			log.WithFields(logrus.Fields{
+				"error":   err,
+				"offset":  offset,
+				"errors":  errors,
+			}).Error("failed to fetch balances batch")
+			
+			if errors >= maxErrors {
+				log.Error("max errors reached, stopping cache sync")
+				break
+			}
+			
+			// Wait a bit before retrying
+			select {
+			case <-time.After(time.Second):
+			case <-ctx.Done():
+				return
+			}
+			continue
 		}
 
 		if len(balances) == 0 {
@@ -83,23 +112,19 @@ func runSync(
 		}
 
 		offset += len(balances)
+		errors = 0 // Reset error counter on success
 
 		// Check if we've processed all records
 		if len(balances) < batchSize {
 			break
 		}
-
-		// Check context cancellation
-		select {
-		case <-ctx.Done():
-			log.Info("cache sync cancelled")
-			return
-		default:
-		}
 	}
 
+	duration := time.Since(startTime)
 	log.WithFields(logrus.Fields{
-		"synced": synced,
-		"total":  total,
+		"synced":   synced,
+		"total":    total,
+		"duration": duration,
+		"rate":     float64(synced) / duration.Seconds(),
 	}).Info("cache synchronization completed")
 }

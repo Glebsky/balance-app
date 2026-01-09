@@ -7,7 +7,7 @@ import (
 	"balance-service/internal/config"
 	"balance-service/internal/model"
 	"github.com/sirupsen/logrus"
-	"gorm.io/driver/postgres"
+	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -17,12 +17,14 @@ type Database struct {
 }
 
 func New(cfg config.DatabaseConfig, log *logrus.Logger) (*Database, error) {
+	// MySQL DSN format: user:password@tcp(host:port)/dbname?parseTime=true
 	dsn := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
+		"%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4&collation=utf8mb4_unicode_ci",
+		cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.DBName,
 	)
+    dsn = "go:go@tcp(mysql:3306)/go_db?parseTime=true&charset=utf8mb4&collation=utf8mb4_unicode_ci"
 
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Warn),
 	})
 	if err != nil {
@@ -44,9 +46,9 @@ func New(cfg config.DatabaseConfig, log *logrus.Logger) (*Database, error) {
 
 	log.WithFields(logrus.Fields{
 		"host": cfg.Host,
+		"port": cfg.Port,
 		"db":   cfg.DBName,
-	}).Info("connected to PostgreSQL")
+	}).Info("connected to MySQL")
 
 	return &Database{DB: db}, nil
 }
-

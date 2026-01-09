@@ -13,6 +13,7 @@ import (
 	"balance-service/internal/processor"
 	"balance-service/internal/repository"
 	cacheSync "balance-service/internal/sync"
+	"github.com/sirupsen/logrus"
 )
 
 var cache sync.Map
@@ -21,13 +22,29 @@ func main() {
 	log := logger.New()
 	cfg := config.Load()
 
+	log.WithFields(logrus.Fields{
+		"rabbitmq_queue": cfg.Rabbit.Queue,
+		"rabbitmq_host":  cfg.Rabbit.Host,
+		"db_host":        cfg.Database.Host,
+		"db_name":        cfg.Database.DBName,
+		"workers":        cfg.Rabbit.Workers,
+		"batch_size":     cfg.Batch.Size,
+	}).Info("starting balance service")
+
 	// Initialize database
 	db, err := database.New(cfg.Database, log)
 	if err != nil {
 		log.WithError(err).Fatal("failed to initialize database")
 	}
-	sqlDB, _ := db.DB.DB()
-	defer sqlDB.Close()
+	sqlDB, err := db.DB.DB()
+	if err != nil {
+		log.WithError(err).Fatal("failed to get database connection")
+	}
+	defer func() {
+		if err := sqlDB.Close(); err != nil {
+			log.WithError(err).Error("error closing database connection")
+		}
+	}()
 
 	// Initialize repositories
 	balanceRepo := repository.NewBalanceRepository(db.DB, log)
@@ -37,7 +54,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Create channel for incoming updates
+	// Create channel for incoming updates (buffered to handle bursts)
 	updates := make(chan processor.IncomingUpdate, cfg.Batch.Size*2)
 
 	// Start processor goroutine
@@ -51,6 +68,7 @@ func main() {
 		cfg.Batch.Interval,
 		log,
 	)
+	log.Info("batch processor started")
 
 	// Start cache synchronizer goroutine
 	go cacheSync.SyncCache(
@@ -61,15 +79,21 @@ func main() {
 		cfg.Sync.Interval,
 		log,
 	)
+	log.Info("cache synchronizer started")
 
 	// Initialize and start RabbitMQ consumer
 	rmqConsumer, err := consumer.New(cfg.Rabbit, log, updates)
 	if err != nil {
 		log.WithError(err).Fatal("failed to initialize RabbitMQ consumer")
 	}
-	defer rmqConsumer.Close()
+	defer func() {
+		log.Info("closing RabbitMQ consumer")
+		rmqConsumer.Close()
+	}()
 
-	// Start consuming messages
+	log.Info("balance service started, waiting for messages...")
+
+	// Start consuming messages (this blocks until context is cancelled)
 	if err := rmqConsumer.Start(ctx); err != nil && ctx.Err() == nil {
 		log.WithError(err).Fatal("consumer stopped unexpectedly")
 	}

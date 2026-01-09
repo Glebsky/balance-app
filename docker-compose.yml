@@ -117,25 +117,37 @@ services:
     networks:
       - balance
 
-#  go-worker:
-#    build:
-#      context: ./go-service
-#      dockerfile: Dockerfile
-#    container_name: balance-go-worker
-#    environment:
-#      MYSQL_DSN: go:go@tcp(mysql:3306)/go_db?parseTime=true
-#      RABBITMQ_URL: amqp://balance:balance@rabbitmq:5672/
-#      RABBITMQ_QUEUE: balance_updates
-#      SYNC_INTERVAL_SECONDS: 30
-#      SYNC_BATCH_SIZE: 100
-#    depends_on:
-#      mysql:
-#        condition: service_healthy
-#      rabbitmq:
-#        condition: service_healthy
-#    restart: unless-stopped
-#    networks:
-#      - balance
+  go-worker:
+   build:
+     context: ./go-service
+     dockerfile: Dockerfile
+   container_name: balance-go-worker
+   environment:
+     DB_HOST: mysql
+     DB_PORT: 3306
+     DB_USER: go
+     DB_PASSWORD: go
+     DB_NAME: go_db
+     RABBITMQ_HOST: rabbitmq
+     RABBITMQ_PORT: 5672
+     RABBITMQ_USER: balance
+     RABBITMQ_PASSWORD: balance
+     RABBITMQ_VHOST: /
+     RABBITMQ_QUEUE: balance_updates
+     RABBITMQ_PREFETCH: 50
+     RABBITMQ_WORKERS: 5
+     BATCH_SIZE: 100
+     BATCH_INTERVAL_SECONDS: 5
+     SYNC_INTERVAL_SECONDS: 30
+     SYNC_BATCH_SIZE: 1000
+   depends_on:
+     mysql:
+       condition: service_healthy
+     rabbitmq:
+       condition: service_healthy
+   restart: unless-stopped
+   networks:
+     - balance
 
 volumes:
   mysql_data:
