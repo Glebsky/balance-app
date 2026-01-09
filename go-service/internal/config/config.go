@@ -8,7 +8,8 @@ import (
 
 type Config struct {
 	Database DatabaseConfig
-	RabbitMQ RabbitMQConfig
+	Rabbit   RabbitConfig
+	Batch    BatchConfig
 	Sync     SyncConfig
 }
 
@@ -21,56 +22,89 @@ type DatabaseConfig struct {
 	SSLMode  string
 }
 
-type RabbitMQConfig struct {
+type RabbitConfig struct {
 	Host     string
 	Port     int
 	User     string
 	Password string
 	VHost    string
-	Exchange string
 	Queue    string
+	Prefetch int
+	Workers  int
+}
+
+type BatchConfig struct {
+	Size     int
+	Interval time.Duration
 }
 
 type SyncConfig struct {
-	Interval time.Duration
+	Interval  time.Duration
 	BatchSize int
 }
 
-func Load() (*Config, error) {
-	dbPort, _ := strconv.Atoi(getEnv("DB_PORT", "5432"))
-	rmqPort, _ := strconv.Atoi(getEnv("RABBITMQ_PORT", "5672"))
-	syncInterval, _ := strconv.Atoi(getEnv("SYNC_INTERVAL_SECONDS", "30"))
-	batchSize, _ := strconv.Atoi(getEnv("SYNC_BATCH_SIZE", "100"))
+func Load() *Config {
+	dbPort := intFromEnv("DB_PORT", 5432)
+	rmqPort := intFromEnv("RABBITMQ_PORT", 5672)
 
 	return &Config{
 		Database: DatabaseConfig{
-			Host:     getEnv("DB_HOST", "localhost"),
+			Host:     getenv("DB_HOST", "localhost"),
 			Port:     dbPort,
-			User:     getEnv("DB_USER", "postgres"),
-			Password: getEnv("DB_PASSWORD", "postgres"),
-			DBName:   getEnv("DB_NAME", "balance_db"),
-			SSLMode:  getEnv("DB_SSLMODE", "disable"),
+			User:     getenv("DB_USER", "postgres"),
+			Password: getenv("DB_PASSWORD", "postgres"),
+			DBName:   getenv("DB_NAME", "balance"),
+			SSLMode:  getenv("DB_SSLMODE", "disable"),
 		},
-		RabbitMQ: RabbitMQConfig{
-			Host:     getEnv("RABBITMQ_HOST", "localhost"),
+		Rabbit: RabbitConfig{
+			Host:     getenv("RABBITMQ_HOST", "localhost"),
 			Port:     rmqPort,
-			User:     getEnv("RABBITMQ_USER", "guest"),
-			Password: getEnv("RABBITMQ_PASSWORD", "guest"),
-			VHost:    getEnv("RABBITMQ_VHOST", "/"),
-			Exchange: getEnv("RABBITMQ_EXCHANGE", "balance_exchange"),
-			Queue:    getEnv("RABBITMQ_QUEUE", "balance_updates"),
+			User:     getenv("RABBITMQ_USER", "guest"),
+			Password: getenv("RABBITMQ_PASSWORD", "guest"),
+			VHost:    getenv("RABBITMQ_VHOST", "/"),
+			Queue:    getenv("RABBITMQ_QUEUE", "balance_updates"),
+			Prefetch: intFromEnv("RABBITMQ_PREFETCH", 50),
+			Workers:  clamp(intFromEnv("RABBITMQ_WORKERS", 5), 5, 10),
+		},
+		Batch: BatchConfig{
+			Size:     intFromEnv("BATCH_SIZE", 100),
+			Interval: time.Duration(intFromEnv("BATCH_INTERVAL_SECONDS", 5)) * time.Second,
 		},
 		Sync: SyncConfig{
-			Interval:  time.Duration(syncInterval) * time.Second,
-			BatchSize: batchSize,
+			Interval:  time.Duration(intFromEnv("SYNC_INTERVAL_SECONDS", 30)) * time.Second,
+			BatchSize: intFromEnv("SYNC_BATCH_SIZE", 1000),
 		},
-	}, nil
+	}
 }
 
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
+func getenv(key, def string) string {
+	if val := os.Getenv(key); val != "" {
+		return val
 	}
-	return defaultValue
+
+	return def
+}
+
+func intFromEnv(key string, def int) int {
+	val := getenv(key, "")
+	if val == "" {
+		return def
+	}
+
+	if parsed, err := strconv.Atoi(val); err == nil {
+		return parsed
+	}
+
+	return def
+}
+
+func clamp(value, min, max int) int {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
 }
 

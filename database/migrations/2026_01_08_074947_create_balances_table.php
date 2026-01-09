@@ -13,15 +13,13 @@ return new class extends Migration
     {
         Schema::create('balances', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
+            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
             $table->decimal('amount', 15, 2)->default(0);
-            $table->unsignedInteger('version')->default(1);
-            $table->timestamp('updated_at')->useCurrent()->useCurrentOnUpdate();
-            
-            // Індекси для оптимізації запитів
-            $table->index('user_id');
-            $table->index('updated_at');
-            $table->unique('user_id'); // Один баланс на користувача
+            $table->unsignedBigInteger('version')->default(0);
+            $table->timestamps();
+
+            $table->unique('user_id');
+            $table->index(['user_id', 'version']);
         });
     }
 

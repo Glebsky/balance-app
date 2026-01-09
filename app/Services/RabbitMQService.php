@@ -41,9 +41,8 @@ class RabbitMQService
      */
     private function getChannel(): AMQPChannel
     {
-        if ($this->channel === null || $this->channel->is_closed()) {
-            $connection = $this->getConnection();
-            $this->channel = $connection->channel();
+        if ($this->channel === null || !$this->channel->is_open()) {
+            $this->channel = $this->getConnection()->channel();
         }
 
         return $this->channel;
@@ -51,6 +50,7 @@ class RabbitMQService
 
     /**
      * Connect to RabbitMQ with retry logic.
+     * @throws Exception
      */
     private function connect(): void
     {
@@ -99,7 +99,7 @@ class RabbitMQService
         }
 
         throw new Exception(
-            "Failed to connect to RabbitMQ after {$this->maxRetries} attempts: " . 
+            "Failed to connect to RabbitMQ after {$this->maxRetries} attempts: " .
             ($lastException ? $lastException->getMessage() : 'Unknown error')
         );
     }
@@ -135,6 +135,7 @@ class RabbitMQService
 
     /**
      * Publish message to RabbitMQ.
+     * @throws Exception
      */
     public function publish(string $queueName, array $data, string $exchangeName = 'balance_exchange'): void
     {
@@ -157,7 +158,7 @@ class RabbitMQService
                 );
 
                 // Enable publisher confirms
-                $channel->confirm_select();
+//                $channel->confirm_select();
                 $channel->basic_publish(
                     $message,
                     $exchangeName,
@@ -193,7 +194,7 @@ class RabbitMQService
         }
 
         throw new Exception(
-            "Failed to publish message to RabbitMQ after {$this->maxRetries} attempts: " . 
+            "Failed to publish message to RabbitMQ after {$this->maxRetries} attempts: " .
             ($lastException ? $lastException->getMessage() : 'Unknown error')
         );
     }
@@ -204,7 +205,7 @@ class RabbitMQService
     private function resetConnection(): void
     {
         try {
-            if ($this->channel !== null && !$this->channel->is_closed()) {
+            if ($this->channel !== null && $this->channel->is_open()) {
                 $this->channel->close();
             }
         } catch (Exception $e) {

@@ -5,7 +5,7 @@ namespace App\Events;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class BalanceUpdated
+class BalanceUpdatedEvent
 {
     use Dispatchable, SerializesModels;
 
@@ -14,7 +14,6 @@ class BalanceUpdated
      */
     public function __construct(
         public readonly int $userId,
-        public readonly float $oldAmount,
         public readonly float $newAmount,
         public readonly int $version,
         public readonly \DateTimeInterface $timestamp
@@ -28,7 +27,6 @@ class BalanceUpdated
     {
         return [
             'user_id' => $this->userId,
-            'old_amount' => $this->oldAmount,
             'new_amount' => $this->newAmount,
             'version' => $this->version,
             'timestamp' => $this->timestamp->format('c'), // ISO 8601 format

@@ -1,71 +1,78 @@
 package main
 
 import (
-	"balance-consumer/internal/config"
-	"balance-consumer/internal/consumer"
-	"balance-consumer/internal/database"
-	"balance-consumer/internal/logger"
-	"balance-consumer/internal/sync"
 	"context"
-	"os"
 	"os/signal"
+	"sync"
 	"syscall"
-	"time"
+
+	"balance-service/internal/config"
+	"balance-service/internal/consumer"
+	"balance-service/internal/database"
+	"balance-service/internal/logger"
+	"balance-service/internal/processor"
+	"balance-service/internal/repository"
+	cacheSync "balance-service/internal/sync"
 )
 
-func main() {
-	// Initialize logger
-	log := logger.New()
+var cache sync.Map
 
-	// Load configuration
-	cfg, err := config.Load()
-	if err != nil {
-		log.WithError(err).Fatal("Failed to load configuration")
-	}
+func main() {
+	log := logger.New()
+	cfg := config.Load()
 
 	// Initialize database
-	db, err := database.New(cfg.Database)
+	db, err := database.New(cfg.Database, log)
 	if err != nil {
-		log.WithError(err).Fatal("Failed to initialize database")
+		log.WithError(err).Fatal("failed to initialize database")
 	}
-	defer db.Close()
+	sqlDB, _ := db.DB.DB()
+	defer sqlDB.Close()
 
-	log.Info("Database connection established")
+	// Initialize repositories
+	balanceRepo := repository.NewBalanceRepository(db.DB, log)
+	eventRepo := repository.NewEventRepository(db.DB, log)
 
-	// Initialize cache synchronizer
-	cacheSync := sync.NewCacheSynchronizer(db, cfg.Sync, log)
-	
-	// Start cache synchronization in background
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// Setup graceful shutdown
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	go cacheSync.Start(ctx)
+	// Create channel for incoming updates
+	updates := make(chan processor.IncomingUpdate, cfg.Batch.Size*2)
 
-	// Initialize RabbitMQ consumer
-	rmqConsumer, err := consumer.New(cfg.RabbitMQ, db, cacheSync, log)
+	// Start processor goroutine
+	go processor.ProcessBatches(
+		ctx,
+		balanceRepo,
+		eventRepo,
+		&cache,
+		updates,
+		cfg.Batch.Size,
+		cfg.Batch.Interval,
+		log,
+	)
+
+	// Start cache synchronizer goroutine
+	go cacheSync.SyncCache(
+		ctx,
+		balanceRepo,
+		&cache,
+		cfg.Sync.BatchSize,
+		cfg.Sync.Interval,
+		log,
+	)
+
+	// Initialize and start RabbitMQ consumer
+	rmqConsumer, err := consumer.New(cfg.Rabbit, log, updates)
 	if err != nil {
-		log.WithError(err).Fatal("Failed to initialize RabbitMQ consumer")
+		log.WithError(err).Fatal("failed to initialize RabbitMQ consumer")
 	}
 	defer rmqConsumer.Close()
 
-	log.Info("RabbitMQ consumer initialized")
-
 	// Start consuming messages
-	go func() {
-		if err := rmqConsumer.Start(); err != nil {
-			log.WithError(err).Fatal("Failed to start consumer")
-		}
-	}()
+	if err := rmqConsumer.Start(ctx); err != nil && ctx.Err() == nil {
+		log.WithError(err).Fatal("consumer stopped unexpectedly")
+	}
 
-	log.Info("Balance consumer service started")
-
-	// Wait for interrupt signal
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	<-sigChan
-
-	log.Info("Shutting down...")
-	cancel()
-	time.Sleep(2 * time.Second) // Give time for graceful shutdown
+	log.Info("graceful shutdown complete")
 }
-

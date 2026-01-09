@@ -1,121 +1,105 @@
 package sync
 
 import (
-	"balance-consumer/internal/config"
-	"balance-consumer/internal/database"
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
+	"balance-service/internal/repository"
 	"github.com/sirupsen/logrus"
 )
 
-type BalanceCache struct {
-	Amount    float64
-	Version   int
-	Timestamp time.Time
-}
+const (
+	syncTimeout = 30 * time.Second
+)
 
-type CacheSynchronizer struct {
-	cache     sync.Map // map[int]*BalanceCache
-	db        *database.DB
-	config    config.SyncConfig
-	log       *logrus.Logger
-	mu        sync.RWMutex
-}
-
-func NewCacheSynchronizer(db *database.DB, cfg config.SyncConfig, log *logrus.Logger) *CacheSynchronizer {
-	return &CacheSynchronizer{
-		db:     db,
-		config: cfg,
-		log:    log,
-	}
-}
-
-func (cs *CacheSynchronizer) UpdateCache(userID int, amount float64, version int, timestamp time.Time) {
-	cs.cache.Store(userID, &BalanceCache{
-		Amount:    amount,
-		Version:   version,
-		Timestamp: timestamp,
-	})
-}
-
-func (cs *CacheSynchronizer) GetCache(userID int) (*BalanceCache, bool) {
-	value, ok := cs.cache.Load(userID)
-	if !ok {
-		return nil, false
-	}
-	return value.(*BalanceCache), true
-}
-
-func (cs *CacheSynchronizer) Start(ctx context.Context) {
-	cs.log.Info("Starting cache synchronizer")
-
-	ticker := time.NewTicker(cs.config.Interval)
+// SyncCache periodically refreshes the local cache from PostgreSQL in batches
+func SyncCache(
+	ctx context.Context,
+	balanceRepo *repository.BalanceRepository,
+	cache *sync.Map,
+	batchSize int,
+	interval time.Duration,
+	log *logrus.Logger,
+) {
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	// Initial sync
-	cs.syncCache()
+	// Run initial sync
+	runSync(ctx, balanceRepo, cache, batchSize, log)
 
 	for {
 		select {
 		case <-ctx.Done():
-			cs.log.Info("Stopping cache synchronizer")
+			log.Info("stopping cache synchronizer")
 			return
 		case <-ticker.C:
-			cs.syncCache()
+			runSync(ctx, balanceRepo, cache, batchSize, log)
 		}
 	}
 }
 
-func (cs *CacheSynchronizer) syncCache() {
-	cs.log.Debug("Starting cache synchronization")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func runSync(
+	ctx context.Context,
+	balanceRepo *repository.BalanceRepository,
+	cache *sync.Map,
+	batchSize int,
+	log *logrus.Logger,
+) {
+	ctx, cancel := context.WithTimeout(ctx, syncTimeout)
 	defer cancel()
 
-	// Get latest balances from database
-	dbBalances, err := cs.db.GetLatestBalances(ctx, cs.config.BatchSize)
+	total, err := balanceRepo.CountBalances(ctx)
 	if err != nil {
-		cs.log.WithError(err).Error("Failed to get latest balances from database")
+		log.WithError(err).Error("failed to count balances for cache sync")
 		return
 	}
 
-	// Update cache with database values
-	updated := 0
-	conflicts := 0
+	if total == 0 {
+		log.Debug("no balances to sync")
+		return
+	}
 
-	for userID, dbBalance := range dbBalances {
-		cachedValue, exists := cs.cache.Load(userID)
-		
-		if !exists {
-			// New entry, add to cache
-			cs.UpdateCache(userID, dbBalance.Amount, dbBalance.Version, dbBalance.Timestamp)
-			updated++
-		} else {
-			cached := cachedValue.(*BalanceCache)
-			// Check for conflicts - database version should be >= cache version
-			if dbBalance.Version > cached.Version {
-				// Database is newer, update cache
-				cs.UpdateCache(userID, dbBalance.Amount, dbBalance.Version, dbBalance.Timestamp)
-				updated++
-			} else if dbBalance.Version < cached.Version {
-				// Cache is newer, this shouldn't happen but log it
-				conflicts++
-				cs.log.WithFields(logrus.Fields{
-					"user_id": userID,
-					"cache_version": cached.Version,
-					"db_version": dbBalance.Version,
-				}).Warn("Version conflict detected")
-			}
+	log.WithField("total", total).Debug("starting cache synchronization")
+
+	var synced int64
+	offset := 0
+
+	for {
+		balances, err := balanceRepo.GetAllBalances(ctx, batchSize, offset)
+		if err != nil {
+			log.WithError(err).Error("failed to fetch balances batch")
+			break
+		}
+
+		if len(balances) == 0 {
+			break
+		}
+
+		// Update cache safely
+		for _, b := range balances {
+			cache.Store(b.UserID, b.Amount)
+			synced++
+		}
+
+		offset += len(balances)
+
+		// Check if we've processed all records
+		if len(balances) < batchSize {
+			break
+		}
+
+		// Check context cancellation
+		select {
+		case <-ctx.Done():
+			log.Info("cache sync cancelled")
+			return
+		default:
 		}
 	}
 
-	cs.log.WithFields(logrus.Fields{
-		"updated": updated,
-		"conflicts": conflicts,
-		"total": len(dbBalances),
-	}).Info("Cache synchronization completed")
+	log.WithFields(logrus.Fields{
+		"synced": synced,
+		"total":  total,
+	}).Info("cache synchronization completed")
 }
-

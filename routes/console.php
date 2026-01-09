@@ -12,5 +12,4 @@ Artisan::command('inspire', function () {
 // Schedule balance updates every 10 seconds
 Schedule::command(UpdateBalancesCommand::class)
     ->everyTenSeconds()
-    ->withoutOverlapping()
     ->runInBackground();
