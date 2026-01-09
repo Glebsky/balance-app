@@ -1,4 +1,27 @@
 # docker-compose.yml
+x-laravel-base: &laravel-base
+  build:
+    context: ./
+    dockerfile: Dockerfile
+  working_dir: /var/www/html
+  volumes:
+    - ./:/var/www/html
+  environment:
+    DB_CONNECTION: mysql
+    DB_HOST: mysql
+    DB_PORT: 3306
+    DB_DATABASE: laravel_db
+    DB_USERNAME: laravel
+    DB_PASSWORD: laravel
+  depends_on:
+    mysql:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_healthy
+  networks:
+    - balance
+  restart: unless-stopped
+
 services:
   mysql:
     image: mysql:8.0
@@ -40,82 +63,17 @@ services:
     networks:
       - balance
 
-  laravel-cli:
-    build:
-      context: ./
-      dockerfile: Dockerfile
-    container_name: balance-laravel-cli
-    working_dir: /var/www/html
-    volumes:
-      - ./:/var/www/html
-    environment:
-      DB_CONNECTION: mysql
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_DATABASE: laravel_db
-      DB_USERNAME: laravel
-      DB_PASSWORD: laravel
-      QUEUE_CONNECTION: rabbitmq
-      RABBITMQ_URL: amqp://balance:balance@rabbitmq:5672/
-    command: php artisan schedule:run
-    depends_on:
-      mysql:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    networks:
-      - balance
-
   laravel-balance-scheduler:
-    build:
-      context: ./
-      dockerfile: Dockerfile
-    container_name: balance-laravel-balance-scheduler
-    working_dir: /var/www/html
-    volumes:
-      - ./:/var/www/html
-    environment:
-      DB_CONNECTION: mysql
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_DATABASE: laravel_db
-      DB_USERNAME: laravel
-      DB_PASSWORD: laravel
-    command: php artisan schedule:run
-    depends_on:
-      mysql:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - balance
+    <<: *laravel-base
+    container_name: balance-laravel-scheduler
+    command: php artisan schedule:work
 
   laravel-worker:
-    build:
-      context: ./
-      dockerfile: Dockerfile
+    <<: *laravel-base
     container_name: balance-laravel-worker
-    working_dir: /var/www/html
-    volumes:
-      - ./:/var/www/html
     environment:
-      DB_CONNECTION: mysql
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_DATABASE: laravel_db
-      DB_USERNAME: laravel
-      DB_PASSWORD: laravel
       QUEUE_CONNECTION: database
-    command: php artisan queue:work --sleep=1 --tries=3
-    depends_on:
-      mysql:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - balance
+    command: php artisan queue:work --sleep=1 --tries=3 --timeout=60 --max-jobs=1000
 
   go-worker:
    build:
