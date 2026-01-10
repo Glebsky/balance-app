@@ -92,12 +92,12 @@ services:
      RABBITMQ_PASSWORD: balance
      RABBITMQ_VHOST: /
      RABBITMQ_QUEUE: balance_updates
-     RABBITMQ_PREFETCH: 50
+     RABBITMQ_PREFETCH: 100
      RABBITMQ_WORKERS: 5
-     BATCH_SIZE: 100
+     BATCH_SIZE: 50
      BATCH_INTERVAL_SECONDS: 5
      SYNC_INTERVAL_SECONDS: 30
-     SYNC_BATCH_SIZE: 1000
+     SYNC_BATCH_SIZE: 500
    depends_on:
      mysql:
        condition: service_healthy

@@ -10,6 +10,8 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 // Schedule balance updates every 10 seconds
-Schedule::command(UpdateBalancesCommand::class)
+Schedule::command(UpdateBalancesCommand::class, [
+    '--users-count' => config('balance.user_count'),
+])
     ->everyTenSeconds()
     ->runInBackground();
