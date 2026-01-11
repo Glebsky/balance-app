@@ -19,20 +19,6 @@ class Balance extends Model
     ];
 
     /**
-     * The attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
-    protected function casts(): array
-    {
-        return [
-            'amount' => 'decimal:2',
-            'version' => 'integer',
-            'updated_at' => 'datetime',
-        ];
-    }
-
-    /**
      * Get the user that owns the balance.
      */
     public function user(): BelongsTo
@@ -46,5 +32,19 @@ class Balance extends Model
     public function incrementVersion(): void
     {
         $this->increment('version');
+    }
+
+    /**
+     * The attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'amount'     => 'decimal:2',
+            'version'    => 'integer',
+            'updated_at' => 'datetime',
+        ];
     }
 }

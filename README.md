@@ -15,20 +15,14 @@
 
 ```bash
 # 1. Запустити інфраструктуру
+cp .env.example .env
+docker-compose run --rm --no-deps laravel-worker composer install
 docker-compose up -d
 
 # 2. Налаштувати Laravel
-composer install
-cp .env.example .env
-php artisan key:generate
-php artisan migrate
-php artisan db:seed
-
-# 3. Запустити scheduler та queue worker
-php artisan schedule:work  # В окремому терміналі
-php artisan queue:work     # В окремому терміналі
-
-# 4. Go сервіс запуститься автоматично через docker-compose
+docker-compose exec laravel-worker php artisan key:generate
+docker-compose exec laravel-worker php artisan migrate
+docker-compose exec laravel-worker php artisan db:seed
 ```
 
 ## Особливості реалізації

@@ -16,7 +16,7 @@ class BalanceUpdaterService
 
     public function __construct(private readonly Dispatcher $events)
     {
-        $this->maxRetries = (int) config('balance.max_deadlock_retries', 5);
+        $this->maxRetries = (int)config('balance.max_deadlock_retries', 5);
     }
 
     /**
@@ -29,7 +29,7 @@ class BalanceUpdaterService
         do {
             try {
                 $updates = DB::transaction(function () use ($batchSize) {
-                    $now = now();
+                    $now     = now();
                     $updates = [];
 
                     $balances = Balance::query()
@@ -40,15 +40,15 @@ class BalanceUpdaterService
                         ->cursor();
 
                     foreach ($balances as $balance) {
-                        $oldAmount = (float) $balance->amount;
-                        $newAmount = max(0, round($oldAmount + $this->randomDelta(), 2));
+                        $oldAmount  = (float)$balance->amount;
+                        $newAmount  = max(0, round($oldAmount + $this->randomDelta(), 2));
                         $newVersion = $balance->version + 1;
 
                         $updates[] = [
-                            'id' => $balance->id,
-                            'user_id' => $balance->user_id,
-                            'amount' => $newAmount,
-                            'version' => $newVersion,
+                            'id'         => $balance->id,
+                            'user_id'    => $balance->user_id,
+                            'amount'     => $newAmount,
+                            'version'    => $newVersion,
                             'created_at' => $balance->created_at ?? $now,
                             'updated_at' => $now,
                         ];
@@ -91,7 +91,7 @@ class BalanceUpdaterService
             $this->events->dispatch(new BalanceUpdatedEvent(
                 $update['user_id'],
                 $update['amount'],
-                (int) $update['version'],
+                (int)$update['version'],
                 now()
             ));
         }
@@ -110,12 +110,12 @@ class BalanceUpdaterService
 
     private function shouldRetry(Throwable $e, int $attempt): bool
     {
-        $sqlState = $e instanceof QueryException ? ($e->getCode() ?? '') : (string) $e->getCode();
+        $sqlState   = $e instanceof QueryException ? ($e->getCode() ?? '') : (string)$e->getCode();
         $isDeadlock = str_starts_with($sqlState, '40P01') || str_starts_with($sqlState, '40001');
 
         if ($isDeadlock && $attempt < $this->maxRetries) {
             Log::warning('Deadlock detected while updating balances, retrying', [
-                'attempt' => $attempt,
+                'attempt'     => $attempt,
                 'max_retries' => $this->maxRetries,
             ]);
 

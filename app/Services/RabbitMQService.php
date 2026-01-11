@@ -2,18 +2,18 @@
 
 namespace App\Services;
 
+use Exception;
+use Illuminate\Support\Facades\Log;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
-use Illuminate\Support\Facades\Log;
-use Exception;
 
 class RabbitMQService
 {
-    private ?AMQPStreamConnection $connection = null;
-    private ?AMQPChannel $channel = null;
-    private int $maxRetries = 3;
-    private int $retryDelay = 1000; // milliseconds
+    private ?AMQPStreamConnection $connection = NULL;
+    private ?AMQPChannel          $channel    = NULL;
+    private int                   $maxRetries = 3;
+    private int                   $retryDelay = 1000; // milliseconds
 
     public function __construct(
         private readonly string $host,
@@ -21,87 +21,8 @@ class RabbitMQService
         private readonly string $user,
         private readonly string $password,
         private readonly string $vhost = '/'
-    ) {
-    }
-
-    /**
-     * Get or create RabbitMQ connection.
-     */
-    private function getConnection(): AMQPStreamConnection
+    )
     {
-        if ($this->connection === null || !$this->connection->isConnected()) {
-            $this->connect();
-        }
-
-        return $this->connection;
-    }
-
-    /**
-     * Get or create RabbitMQ channel.
-     */
-    private function getChannel(): AMQPChannel
-    {
-        if ($this->channel === null || !$this->channel->is_open()) {
-            $this->channel = $this->getConnection()->channel();
-        }
-
-        return $this->channel;
-    }
-
-    /**
-     * Connect to RabbitMQ with retry logic.
-     * @throws Exception
-     */
-    private function connect(): void
-    {
-        $attempt = 0;
-        $lastException = null;
-
-        while ($attempt < $this->maxRetries) {
-            try {
-                $this->connection = new AMQPStreamConnection(
-                    $this->host,
-                    $this->port,
-                    $this->user,
-                    $this->password,
-                    $this->vhost,
-                    false, // insist
-                    'AMQPLAIN', // login_method
-                    null, // login_response
-                    'en_US', // locale
-                    3.0, // connection_timeout
-                    3.0, // read_write_timeout
-                    null, // context
-                    false, // keepalive
-                    0 // heartbeat
-                );
-
-                Log::info('Successfully connected to RabbitMQ', [
-                    'host' => $this->host,
-                    'port' => $this->port,
-                ]);
-
-                return;
-            } catch (Exception $e) {
-                $attempt++;
-                $lastException = $e;
-
-                Log::warning('Failed to connect to RabbitMQ', [
-                    'attempt' => $attempt,
-                    'max_retries' => $this->maxRetries,
-                    'error' => $e->getMessage(),
-                ]);
-
-                if ($attempt < $this->maxRetries) {
-                    usleep($this->retryDelay * 1000 * $attempt); // Exponential backoff
-                }
-            }
-        }
-
-        throw new Exception(
-            "Failed to connect to RabbitMQ after {$this->maxRetries} attempts: " .
-            ($lastException ? $lastException->getMessage() : 'Unknown error')
-        );
     }
 
     /**
@@ -139,8 +60,8 @@ class RabbitMQService
      */
     public function publish(string $queueName, array $data, string $exchangeName = 'balance_exchange'): void
     {
-        $attempt = 0;
-        $lastException = null;
+        $attempt       = 0;
+        $lastException = NULL;
 
         while ($attempt < $this->maxRetries) {
             try {
@@ -148,12 +69,12 @@ class RabbitMQService
                 $channel = $this->getChannel();
 
                 $messageBody = json_encode($data, JSON_THROW_ON_ERROR);
-                $message = new AMQPMessage(
+                $message     = new AMQPMessage(
                     $messageBody,
                     [
                         'delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT, // Make message persistent
-                        'content_type' => 'application/json',
-                        'timestamp' => time(),
+                        'content_type'  => 'application/json',
+                        'timestamp'     => time(),
                     ]
                 );
 
@@ -169,7 +90,7 @@ class RabbitMQService
                 $channel->wait_for_pending_acks(5);
 
                 Log::debug('Message published to RabbitMQ', [
-                    'queue' => $queueName,
+                    'queue'    => $queueName,
                     'exchange' => $exchangeName,
                 ]);
 
@@ -182,9 +103,9 @@ class RabbitMQService
                 $this->resetConnection();
 
                 Log::error('Failed to publish message to RabbitMQ', [
-                    'attempt' => $attempt,
+                    'attempt'     => $attempt,
                     'max_retries' => $this->maxRetries,
-                    'error' => $e->getMessage(),
+                    'error'       => $e->getMessage(),
                 ]);
 
                 if ($attempt < $this->maxRetries) {
@@ -200,12 +121,100 @@ class RabbitMQService
     }
 
     /**
+     * Close connections gracefully.
+     */
+    public function __destruct()
+    {
+        $this->resetConnection();
+    }
+
+    /**
+     * Get or create RabbitMQ connection.
+     */
+    private function getConnection(): AMQPStreamConnection
+    {
+        if ($this->connection === NULL || !$this->connection->isConnected()) {
+            $this->connect();
+        }
+
+        return $this->connection;
+    }
+
+    /**
+     * Get or create RabbitMQ channel.
+     */
+    private function getChannel(): AMQPChannel
+    {
+        if ($this->channel === NULL || !$this->channel->is_open()) {
+            $this->channel = $this->getConnection()->channel();
+        }
+
+        return $this->channel;
+    }
+
+    /**
+     * Connect to RabbitMQ with retry logic.
+     * @throws Exception
+     */
+    private function connect(): void
+    {
+        $attempt       = 0;
+        $lastException = NULL;
+
+        while ($attempt < $this->maxRetries) {
+            try {
+                $this->connection = new AMQPStreamConnection(
+                    $this->host,
+                    $this->port,
+                    $this->user,
+                    $this->password,
+                    $this->vhost,
+                    false, // insist
+                    'AMQPLAIN', // login_method
+                    NULL, // login_response
+                    'en_US', // locale
+                    3.0, // connection_timeout
+                    3.0, // read_write_timeout
+                    NULL, // context
+                    false, // keepalive
+                    0 // heartbeat
+                );
+
+                Log::info('Successfully connected to RabbitMQ', [
+                    'host' => $this->host,
+                    'port' => $this->port,
+                ]);
+
+                return;
+            } catch (Exception $e) {
+                $attempt++;
+                $lastException = $e;
+
+                Log::warning('Failed to connect to RabbitMQ', [
+                    'attempt'     => $attempt,
+                    'max_retries' => $this->maxRetries,
+                    'error'       => $e->getMessage(),
+                ]);
+
+                if ($attempt < $this->maxRetries) {
+                    usleep($this->retryDelay * 1000 * $attempt); // Exponential backoff
+                }
+            }
+        }
+
+        throw new Exception(
+            "Failed to connect to RabbitMQ after {$this->maxRetries} attempts: " .
+            ($lastException ? $lastException->getMessage() : 'Unknown error')
+        );
+    }
+
+    /**
      * Reset connection and channel.
      */
     private function resetConnection(): void
     {
         try {
-            if ($this->channel !== null && $this->channel->is_open()) {
+            if ($this->channel !== NULL && $this->channel->is_open()) {
                 $this->channel->close();
             }
         } catch (Exception $e) {
@@ -213,23 +222,15 @@ class RabbitMQService
         }
 
         try {
-            if ($this->connection !== null && $this->connection->isConnected()) {
+            if ($this->connection !== NULL && $this->connection->isConnected()) {
                 $this->connection->close();
             }
         } catch (Exception $e) {
             Log::warning('Error closing connection', ['error' => $e->getMessage()]);
         }
 
-        $this->channel = null;
-        $this->connection = null;
-    }
-
-    /**
-     * Close connections gracefully.
-     */
-    public function __destruct()
-    {
-        $this->resetConnection();
+        $this->channel    = NULL;
+        $this->connection = NULL;
     }
 }
 

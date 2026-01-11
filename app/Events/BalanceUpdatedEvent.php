@@ -2,6 +2,7 @@
 
 namespace App\Events;
 
+use DateTimeInterface;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -16,8 +17,9 @@ class BalanceUpdatedEvent
         public readonly int $userId,
         public readonly float $newAmount,
         public readonly int $version,
-        public readonly \DateTimeInterface $timestamp
-    ) {
+        public readonly DateTimeInterface $timestamp
+    )
+    {
     }
 
     /**
@@ -26,11 +28,11 @@ class BalanceUpdatedEvent
     public function toArray(): array
     {
         return [
-            'user_id' => $this->userId,
+            'user_id'    => $this->userId,
             'new_amount' => $this->newAmount,
-            'version' => $this->version,
-            'timestamp' => $this->timestamp->format('c'), // ISO 8601 format
-            'event_id' => uniqid('balance_', true), // Unique event ID for idempotency
+            'version'    => $this->version,
+            'timestamp'  => $this->timestamp->format('c'), // ISO 8601 format
+            'event_id'   => uniqid('balance_', true), // Unique event ID for idempotency
         ];
     }
 }

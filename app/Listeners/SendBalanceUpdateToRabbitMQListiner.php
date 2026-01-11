@@ -4,6 +4,7 @@ namespace App\Listeners;
 
 use App\Events\BalanceUpdatedEvent;
 use App\Services\RabbitMQService;
+use Exception;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\Cache;
@@ -28,7 +29,8 @@ class SendBalanceUpdateToRabbitMQListiner implements ShouldQueue
      */
     public function __construct(
         private readonly RabbitMQService $rabbitMQService
-    ) {
+    )
+    {
     }
 
     /**
@@ -60,11 +62,11 @@ class SendBalanceUpdateToRabbitMQListiner implements ShouldQueue
                 'user_id' => $event->userId,
                 'version' => $event->version,
             ]);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Log::error('Failed to send balance update to RabbitMQ', [
                 'user_id' => $event->userId,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
+                'error'   => $e->getMessage(),
+                'trace'   => $e->getTraceAsString(),
             ]);
 
             // Re-throw to allow queue retry mechanism
