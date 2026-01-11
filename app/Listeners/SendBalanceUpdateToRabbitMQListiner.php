@@ -35,6 +35,7 @@ class SendBalanceUpdateToRabbitMQListiner implements ShouldQueue
 
     /**
      * Handle the event.
+     * @throws Exception
      */
     public function handle(BalanceUpdatedEvent $event): void
     {

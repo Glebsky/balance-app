@@ -28,7 +28,7 @@ docker-compose exec laravel-worker php artisan db:seed
 ## Особливості реалізації
 
 ### Laravel
-- ✅ Оптимізовані bulk updates через raw SQL
+- ✅ Оптимізовані bulk updates
 - ✅ Event/Listener pattern для decoupling
 - ✅ RabbitMQ Service з автоматичним reconnect
 - ✅ Scheduled tasks для періодичного оновлення
@@ -40,7 +40,6 @@ docker-compose exec laravel-worker php artisan db:seed
 - ✅ Thread-safe кеш з sync.Map
 - ✅ Періодична синхронізація кешу з БД
 - ✅ Dead-letter queue для обробки помилок
-- ✅ Connection pooling для PostgreSQL
 - ✅ Graceful shutdown
 
 ## Структура проекту
@@ -49,9 +48,10 @@ docker-compose exec laravel-worker php artisan db:seed
 balance-app/
 ├── app/
 │   ├── Console/Commands/UpdateBalancesCommand.php
-│   ├── Events/BalanceUpdated.php
-│   ├── Listeners/SendBalanceUpdateToRabbitMQ.php
-│   ├── Models/
+│   ├── Events/BalanceUpdatedEvent.php
+│   ├── Listeners/SendBalanceUpdateToRabbitMQListiner.php
+│   ├── Models/Balance.php
+│   ├── Models/User.php
 │   └── Services/RabbitMQService.php
 ├── go-service/
 │   ├── internal/
