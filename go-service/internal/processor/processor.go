@@ -1,10 +1,13 @@
 package processor
 
 import (
-	"context"
-	"sync"
-	"time"
+    "context"
+    "sort"
+    "strings"
+    "sync"
+    "time"
 
+    "balance-service/internal/config"
 	"balance-service/internal/model"
 	"balance-service/internal/repository"
 	"github.com/rabbitmq/amqp091-go"
@@ -74,217 +77,176 @@ type IncomingUpdate struct {
 	Delivery amqp091.Delivery
 }
 
-// ProcessBatches accumulates incoming updates and writes them to db in batches
-func ProcessBatches(
-	ctx context.Context,
-	balanceRepo *repository.BalanceRepository,
-	eventRepo *repository.EventRepository,
-	cache *sync.Map,
-	updates <-chan IncomingUpdate,
-	batchSize int,
-	flushInterval time.Duration,
-	log *logrus.Logger,
+func StartProcessorPool(
+    ctx context.Context,
+    balanceRepo *repository.BalanceRepository,
+    eventRepo *repository.EventRepository,
+    cache *sync.Map,
+    updates <-chan IncomingUpdate,
+    rabbitCfg config.RabbitConfig,
+    batchSize int,
+    log *logrus.Logger,
 ) {
-	ticker := time.NewTicker(flushInterval)
-	defer ticker.Stop()
+//     numWorkers := runtime.NumCPU()
+    numWorkers := rabbitCfg.Workers
+    log.Infof("Starting processor pool with %d workers", numWorkers)
 
-	batch := make([]IncomingUpdate, 0, batchSize)
+    for i := 0; i < numWorkers; i++ {
+        go runWorker(ctx, i, balanceRepo, eventRepo, cache, updates, batchSize, log)
+    }
+}
 
-	flush := func() {
-		if len(batch) == 0 {
-			return
-		}
+func runWorker(
+    ctx context.Context,
+    id int,
+    balanceRepo *repository.BalanceRepository,
+    eventRepo *repository.EventRepository,
+    cache *sync.Map,
+    updates <-chan IncomingUpdate,
+    batchSize int,
+    log *logrus.Logger,
+) {
+    flushInterval := time.Duration(2000+(id*500)) * time.Millisecond
+    ticker := time.NewTicker(flushInterval)
+    defer ticker.Stop()
 
-		local := batch
-		batch = make([]IncomingUpdate, 0, batchSize)
+    batch := make([]IncomingUpdate, 0, batchSize)
 
-		log.WithField("batch_size", len(local)).Debug("processing batch")
+    flush := func() {
+        if len(batch) == 0 {
+            return
+        }
+        localBatch := batch
+        batch = make([]IncomingUpdate, 0, batchSize)
 
-		if err := handleBatch(ctx, balanceRepo, eventRepo, cache, local, log); err != nil {
-			log.WithFields(logrus.Fields{
-				"error":      err,
-				"batch_size": len(local),
-			}).Error("failed to process batch, nacking messages for retry")
-			// Nack all messages in batch for retry
-			for _, upd := range local {
-				if err := upd.Delivery.Nack(false, true); err != nil {
-					log.WithError(err).Warn("failed to nack message")
-				}
-			}
-			return
-		}
+        maxRetries := 3
+        var err error
 
-		// Ack all remaining messages after successful processing
-		acked := 0
-		for _, upd := range local {
-			if err := upd.Delivery.Ack(false); err != nil {
-				log.WithError(err).Warn("failed to ack message")
-			} else {
-				acked++
-			}
-		}
+        for i := 0; i < maxRetries; i++ {
+            err = handleBatch(ctx, balanceRepo, eventRepo, cache, localBatch, log)
+            if err == nil {
+                break
+            }
 
-		log.WithFields(logrus.Fields{
-			"total": len(local),
-			"acked": acked,
-		}).Debug("batch processed successfully")
-	}
+            if strings.Contains(err.Error(), "1213") || strings.Contains(err.Error(), "Deadlock") {
+                log.Warnf("Worker %d: Deadlock detected (attempt %d/%d). Retrying...", id, i+1, maxRetries)
+                time.Sleep(time.Millisecond * time.Duration(100*(i+1)))
+                continue
+            }
+            break
+        }
 
-	for {
-		select {
-		case <-ctx.Done():
-			flush()
-			return
-		case upd, ok := <-updates:
-			if !ok {
-				flush()
-				return
-			}
+        if err != nil {
+            log.Errorf("Worker %d fatal error after retries: %v", id, err)
+            for _, upd := range localBatch {
+                _ = upd.Delivery.Nack(false, true)
+            }
+        } else {
+            for _, upd := range localBatch {
+                _ = upd.Delivery.Ack(false)
+            }
+        }
+    }
 
-			batch = append(batch, upd)
-			if len(batch) >= batchSize {
-				flush()
-			}
-		case <-ticker.C:
-			flush()
-		}
-	}
+    for {
+        select {
+        case <-ctx.Done():
+            flush()
+            return
+        case upd, ok := <-updates:
+            if !ok {
+                flush()
+                return
+            }
+            batch = append(batch, upd)
+            if len(batch) >= batchSize {
+                flush()
+            }
+        case <-ticker.C:
+            flush()
+        }
+    }
 }
 
 func handleBatch(
-	ctx context.Context,
-	balanceRepo *repository.BalanceRepository,
-	eventRepo *repository.EventRepository,
-	cache *sync.Map,
-	updates []IncomingUpdate,
-	log *logrus.Logger,
+    ctx context.Context,
+    balanceRepo *repository.BalanceRepository,
+    eventRepo *repository.EventRepository,
+    cache *sync.Map,
+    updates []IncomingUpdate,
+    log *logrus.Logger,
 ) error {
-	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
+    ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+    defer cancel()
 
-	// Deduplicate by user_id, keeping the highest version
-	deduped := make(map[uint]IncomingUpdate)
-	events := make([]model.BalanceEvent, 0, len(updates))
-	seenEventIDs := make(map[string]bool)
-	toAck := make([]amqp091.Delivery, 0, len(updates)) // Messages to ack immediately (duplicates)
+    deduped := make(map[uint]IncomingUpdate)
+    events := make([]model.BalanceEvent, 0, len(updates))
+    seenEventIDs := make(map[string]bool)
 
-	for _, upd := range updates {
-		payload := upd.Payload
+    for _, upd := range updates {
+        payload := upd.Payload
+        if payload.UserID == 0 {
+            continue
+        }
 
-		// Validate payload
-		if payload.UserID == 0 {
-			log.WithField("payload", payload).Warn("invalid user_id in message, skipping")
-			_ = upd.Delivery.Nack(false, false) // Don't requeue invalid messages
-			continue
-		}
+        if payload.EventID != "" {
+            if !seenEventIDs[payload.EventID] {
+                seenEventIDs[payload.EventID] = true
+                ts, _ := payload.ParseTimestamp()
+                events = append(events, model.BalanceEvent{
+                    UserID:    payload.UserID,
+                    Amount:    payload.GetAmount(),
+                    Version:   payload.Version,
+                    UpdatedAt: ts,
+                    EventID:   payload.EventID,
+                })
+            }
+        }
 
-		// Check for duplicate event_id in batch
-		if payload.EventID != "" {
-			if seenEventIDs[payload.EventID] {
-				log.WithFields(logrus.Fields{
-					"event_id": payload.EventID,
-					"user_id":  payload.UserID,
-				}).Debug("duplicate event_id in batch, skipping")
-				toAck = append(toAck, upd.Delivery) // Ack duplicate in batch
-				continue
-			}
-			seenEventIDs[payload.EventID] = true
-		}
+        existing, ok := deduped[payload.UserID]
+        if !ok || payload.Version > existing.Payload.Version {
+            deduped[payload.UserID] = upd
+        }
+    }
 
-		// Check if event already exists in DB (if event_id provided)
-		if payload.EventID != "" {
-			exists, err := eventRepo.EventExists(ctx, payload.EventID)
-			if err != nil {
-				log.WithError(err).Warn("failed to check event existence, will process anyway")
-			} else if exists {
-				log.WithFields(logrus.Fields{
-					"event_id": payload.EventID,
-					"user_id":  payload.UserID,
-				}).Debug("event already exists in DB, skipping")
-				toAck = append(toAck, upd.Delivery) // Ack already processed message
-				continue
-			}
-		}
+    if len(events) > 0 {
+        if err := eventRepo.SaveEventsBatch(ctx, events); err != nil {
+            return err
+        }
+    }
 
-		// Keep the highest version for each user
-		existing, ok := deduped[payload.UserID]
-		if !ok || payload.Version > existing.Payload.Version {
-			deduped[payload.UserID] = upd
-		}
+    balances := make([]model.Balance, 0, len(deduped))
+    userIDs := make([]uint, 0, len(deduped))
+    for _, upd := range deduped {
+        balances = append(balances, model.Balance{
+            UserID:  upd.Payload.UserID,
+            Amount:  upd.Payload.GetAmount(),
+            Version: upd.Payload.Version,
+        })
+        userIDs = append(userIDs, upd.Payload.UserID)
+    }
 
-		// Prepare event record
-		timestamp, err := payload.ParseTimestamp()
-		if err != nil {
-			log.WithFields(logrus.Fields{
-				"error":     err,
-				"timestamp": payload.GetTimestamp(),
-				"user_id":   payload.UserID,
-			}).Warn("failed to parse timestamp, using current time")
-			timestamp = time.Now()
-		}
+    sort.Slice(balances, func(i, j int) bool {
+        return balances[i].UserID < balances[j].UserID
+    })
 
-		event := model.BalanceEvent{
-			UserID:    payload.UserID,
-			Amount:    payload.GetAmount(),
-			Version:   payload.Version,
-			UpdatedAt: timestamp,
-			EventID:   payload.EventID,
-		}
-		events = append(events, event)
-	}
+    if len(balances) > 0 {
+        if err := balanceRepo.SaveBalancesBatch(ctx, balances); err != nil {
+            return err
+        }
 
-	// Ack duplicate/already-processed messages immediately
-	for _, delivery := range toAck {
-		if err := delivery.Ack(false); err != nil {
-			log.WithError(err).Warn("failed to ack duplicate message")
-		}
-	}
+        updatedBalances, err := balanceRepo.GetBalancesByUserIDs(ctx, userIDs)
+        if err == nil {
+            for _, b := range updatedBalances {
+                cache.Store(b.UserID, b.Amount)
+            }
+        }
 
-	// Save events first
-	if len(events) > 0 {
-		if err := eventRepo.SaveEventsBatch(ctx, events); err != nil {
-			return err
-		}
-		log.WithField("count", len(events)).Debug("events saved")
-	}
+        log.WithFields(logrus.Fields{
+            "balances": len(balances),
+            "events":   len(events),
+        }).Info("batch upsert committed")
+    }
 
-	// Prepare balance records
-	balances := make([]model.Balance, 0, len(deduped))
-	for _, upd := range deduped {
-		balances = append(balances, model.Balance{
-			UserID:  upd.Payload.UserID,
-			Amount:  upd.Payload.GetAmount(),
-			Version: upd.Payload.Version,
-		})
-	}
-
-	// Save balances
-	if len(balances) > 0 {
-		if err := balanceRepo.SaveBalancesBatch(ctx, balances); err != nil {
-			return err
-		}
-
-		// Update cache with latest balances
-		userIDs := make([]uint, 0, len(balances))
-		for _, b := range balances {
-			userIDs = append(userIDs, b.UserID)
-		}
-
-		// Fetch updated balances to ensure cache has correct data
-		updatedBalances, err := balanceRepo.GetBalancesByUserIDs(ctx, userIDs)
-		if err != nil {
-			log.WithError(err).Warn("failed to fetch updated balances for cache")
-		} else {
-			for _, b := range updatedBalances {
-				cache.Store(b.UserID, b.Amount)
-			}
-		}
-
-		log.WithFields(logrus.Fields{
-			"balances": len(balances),
-			"events":   len(events),
-		}).Info("batch upsert committed")
-	}
-
-	return nil
+    return nil
 }

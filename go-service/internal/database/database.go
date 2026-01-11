@@ -25,7 +25,7 @@ func New(cfg config.DatabaseConfig, log *logrus.Logger) (*Database, error) {
     dsn = "go:go@tcp(mysql:3306)/go_db?parseTime=true&charset=utf8mb4&collation=utf8mb4_unicode_ci"
 
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Warn),
+		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)

@@ -56,7 +56,11 @@ func (c *Consumer) connect() error {
 	dsn := fmt.Sprintf("amqp://%s:%s@%s:%d%s",
 		c.cfg.User, c.cfg.Password, c.cfg.Host, c.cfg.Port, c.cfg.VHost)
 
-	conn, err := amqp.Dial(dsn)
+
+	conn, err := amqp.DialConfig(dsn, amqp.Config{
+            Heartbeat: 60 * time.Second,
+            Dial:      amqp.DefaultDial(time.Second * 30),
+        })
 	if err != nil {
 		return fmt.Errorf("failed to dial RabbitMQ: %w", err)
 	}

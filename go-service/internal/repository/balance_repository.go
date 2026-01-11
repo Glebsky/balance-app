@@ -35,18 +35,18 @@ func (r *BalanceRepository) SaveBalance(ctx context.Context, balance *model.Bala
 
 // SaveBalancesBatch saves multiple balances in a batch
 func (r *BalanceRepository) SaveBalancesBatch(ctx context.Context, balances []model.Balance) error {
-	if len(balances) == 0 {
-		return nil
-	}
+    if len(balances) == 0 {
+        return nil
+    }
 
-	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "user_id"}},
-		DoUpdates: clause.Assignments(map[string]interface{}{
-			"amount": gorm.Expr("CASE WHEN balances.version <= VALUES(version) THEN VALUES(amount) ELSE balances.amount END"),
-			"version": gorm.Expr("GREATEST(balances.version, VALUES(version))"),
-			"updated_at": gorm.Expr("NOW()"),
-		}),
-	}).Create(&balances).Error
+    return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+        Columns: []clause.Column{{Name: "user_id"}},
+        DoUpdates: clause.Assignments(map[string]interface{}{
+            "amount":     gorm.Expr("CASE WHEN balances.version <= VALUES(version) THEN VALUES(amount) ELSE balances.amount END"),
+            "version":    gorm.Expr("GREATEST(balances.version, VALUES(version))"),
+            "updated_at": gorm.Expr("NOW()"),
+        }),
+    }).Create(&balances).Error
 }
 
 // GetBalancesByUserIDs retrieves balances for given user IDs

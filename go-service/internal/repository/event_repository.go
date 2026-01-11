@@ -6,6 +6,7 @@ import (
 	"balance-service/internal/model"
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type EventRepository struct {
@@ -25,13 +26,18 @@ func (r *EventRepository) SaveEvent(ctx context.Context, event *model.BalanceEve
 	return r.db.WithContext(ctx).Create(event).Error
 }
 
-// SaveEventsBatch saves multiple events in a batch
 func (r *EventRepository) SaveEventsBatch(ctx context.Context, events []model.BalanceEvent) error {
-	if len(events) == 0 {
-		return nil
-	}
+    if len(events) == 0 {
+        return nil
+    }
 
-	return r.db.WithContext(ctx).Create(&events).Error
+    return r.db.WithContext(ctx).
+        Clauses(clause.OnConflict{
+            Columns:   []clause.Column{{Name: "event_id"}}, // Укажи здесь имя своего уникального индекса
+            DoNothing: true,
+        }).
+        Create(&events).
+        Error
 }
 
 // EventExists checks if an event with given event_id already exists

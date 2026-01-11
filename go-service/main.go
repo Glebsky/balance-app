@@ -58,16 +58,16 @@ func main() {
 	updates := make(chan processor.IncomingUpdate, cfg.Batch.Size*2)
 
 	// Start processor goroutine
-	go processor.ProcessBatches(
-		ctx,
-		balanceRepo,
-		eventRepo,
-		&cache,
-		updates,
-		cfg.Batch.Size,
-		cfg.Batch.Interval,
-		log,
-	)
+	go processor.StartProcessorPool(
+           ctx,
+           balanceRepo,
+           eventRepo,
+           &cache,
+           updates,
+           cfg.Rabbit,
+           cfg.Batch.Size,
+           log,
+       )
 	log.Info("batch processor started")
 
 	// Start cache synchronizer goroutine
