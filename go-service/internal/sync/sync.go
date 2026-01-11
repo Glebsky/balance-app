@@ -13,7 +13,7 @@ const (
 	syncTimeout = 30 * time.Second
 )
 
-// SyncCache periodically refreshes the local cache from PostgreSQL in batches
+// SyncCache periodically refreshes the local cache from MySql in batches
 func SyncCache(
 	ctx context.Context,
 	balanceRepo *repository.BalanceRepository,
@@ -50,7 +50,7 @@ func runSync(
 	defer cancel()
 
 	startTime := time.Now()
-	
+
 	total, err := balanceRepo.CountBalances(ctx)
 	if err != nil {
 		log.WithError(err).Error("failed to count balances for cache sync")
@@ -86,12 +86,12 @@ func runSync(
 				"offset":  offset,
 				"errors":  errors,
 			}).Error("failed to fetch balances batch")
-			
+
 			if errors >= maxErrors {
 				log.Error("max errors reached, stopping cache sync")
 				break
 			}
-			
+
 			// Wait a bit before retrying
 			select {
 			case <-time.After(time.Second):
