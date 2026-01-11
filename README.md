@@ -52,6 +52,7 @@ balance-app/
 │   ├── Listeners/SendBalanceUpdateToRabbitMQListiner.php
 │   ├── Models/Balance.php
 │   ├── Models/User.php
+│   └── Services/BalanceUpdaterService.php.php
 │   └── Services/RabbitMQService.php
 ├── go-service/
 │   ├── internal/
@@ -62,9 +63,6 @@ balance-app/
 │   │   └── sync/
 │   └── main.go
 ├── docker-compose.yml
+├── Dockerfile
 └── SETUP.md
 ```
-
-## Ліцензія
-
-MIT License
