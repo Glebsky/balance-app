@@ -36,27 +36,23 @@ class BalanceUpdaterService
                         ->select(['id', 'user_id', 'amount', 'version', 'created_at'])
                         ->inRandomOrder()
                         ->limit($batchSize)
-                        ->lockForUpdate()
+                        ->lock('FOR UPDATE SKIP LOCKED')
                         ->cursor();
 
-                    foreach ($balances as $balance) {
-                        $oldAmount  = (float)$balance->amount;
-                        $newAmount  = max(0, round($oldAmount + $this->randomDelta(), 2));
-                        $newVersion = $balance->version + 1;
+                    if ($balances->isEmpty()) {
+                        return [];
+                    }
 
-                        $updates[] = [
+                    $updates = $balances->map(function ($balance) use ($now) {
+                        return [
                             'id'         => $balance->id,
                             'user_id'    => $balance->user_id,
-                            'amount'     => $newAmount,
-                            'version'    => $newVersion,
+                            'amount'     => max(0, round((float)$balance->amount + $this->randomDelta(), 2)),
+                            'version'    => $balance->version + 1,
                             'created_at' => $balance->created_at ?? $now,
                             'updated_at' => $now,
                         ];
-                    }
-
-                    if (empty($updates)) {
-                        return [];
-                    }
+                    })->toArray();
 
                     Balance::query()->upsert(
                         $updates,
