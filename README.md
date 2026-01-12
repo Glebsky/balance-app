@@ -46,15 +46,17 @@ docker compose up -d
 
 ```
 balance-app/
-├── app/
-│   ├── Console/Commands/UpdateBalancesCommand.php
-│   ├── Events/BalanceUpdatedEvent.php
-│   ├── Listeners/SendBalanceUpdateToRabbitMQListiner.php
-│   ├── Models/Balance.php
-│   ├── Models/User.php
-│   └── Services/BalanceUpdaterService.php.php
-│   └── Services/RabbitMQService.php
-├── go-service/
+├── laravel-project/
+│   └── app
+│       ├── Console/Commands/UpdateBalancesCommand.php
+│       ├── Console/Commands/UpdateBalancesCommand.php
+│       ├── Events/BalanceUpdatedEvent.php
+│       ├── Listeners/SendBalanceUpdateToRabbitMQListiner.php
+│       ├── Models/Balance.php
+│       ├── Models/User.php
+│       └── Services/BalanceUpdaterService.php.php
+│       └── Services/RabbitMQService.php
+├── go-project/
 │   ├── internal/
 │   │   ├── config/
 │   │   ├── consumer/
@@ -63,6 +65,5 @@ balance-app/
 │   │   └── sync/
 │   └── main.go
 ├── docker-compose.yml
-├── Dockerfile
 └── SETUP.md
 ```
