@@ -14,13 +14,15 @@
 Детальні інструкції дивіться в [SETUP.md](SETUP.md)
 
 ```bash
-# 1. Запустити інфраструктуру
+# 1. Налаштувати інфраструктуру
 cp .env.example .env
 docker compose build
-docker-compose up -d
 
 # 2. Налаштувати Laravel
 docker compose run --rm laravel-worker bash -c "php artisan key:generate && php artisan migrate --seed"
+
+# 3. Запуск докер
+docker-compose up -d
 ```
 
 ## Особливості реалізації
