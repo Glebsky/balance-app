@@ -17,7 +17,7 @@ class UserBalanceSeeder extends Seeder
 
         User::factory()
             ->count($total)
-            ->hasBalances(1)
+            ->hasBalance(1)
             ->create();
 
         $this->command?->info("Successfully seeded {$total} users and their balances.");
