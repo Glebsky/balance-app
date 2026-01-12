@@ -19,7 +19,7 @@ cp .env.example .env
 docker compose build
 
 # 2. Налаштувати Laravel
-docker compose run --rm laravel-worker bash -c "php artisan key:generate && php artisan migrate --seed"
+docker compose run --rm laravel-worker bash -c "php artisan key:generate && php artisan migrate:fresh --seed"
 
 # 3. Запуск докер
 docker-compose up -d

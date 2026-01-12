@@ -27,7 +27,7 @@ docker compose build
 
 ## Крок 2: Налаштування Laravel
 ```bash
-docker compose run --rm laravel-worker bash -c "php artisan key:generate && php artisan migrate --seed"
+docker compose run --rm laravel-worker bash -c "php artisan key:generate && php artisan migrate:fresh --seed"
 ```
 
 ## Крок 3:  Запуск docker

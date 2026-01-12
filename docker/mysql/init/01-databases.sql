@@ -1,8 +1,11 @@
 CREATE DATABASE IF NOT EXISTS laravel_db;
 CREATE DATABASE IF NOT EXISTS go_db;
 
-CREATE USER IF NOT EXISTS 'laravel'@'%' IDENTIFIED BY 'laravel';
-CREATE USER IF NOT EXISTS 'go'@'%' IDENTIFIED BY 'go';
+DROP USER IF EXISTS 'laravel'@'%';
+DROP USER IF EXISTS 'go'@'%';
+
+CREATE USER 'laravel'@'%' IDENTIFIED BY 'laravel';
+CREATE USER 'go'@'%' IDENTIFIED BY 'go';
 
 GRANT ALL PRIVILEGES ON laravel_db.* TO 'laravel'@'%';
 GRANT ALL PRIVILEGES ON go_db.* TO 'go'@'%';
