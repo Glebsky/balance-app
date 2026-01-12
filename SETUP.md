@@ -22,19 +22,22 @@ docker-compose up -d
 ## Крок 1: Запуск інфраструктури (Docker Compose)
 ```bash
 cp .env.example .env
-docker-compose run --rm --no-deps laravel-worker composer install
+docker compose build
+```
+
+## Крок 2: Налаштування Laravel
+```bash
+docker compose run --rm laravel-worker bash -c "php artisan key:generate && php artisan migrate --seed"
+```
+
+## Крок 3:  Запуск docker
+```bash
 docker-compose up -d
 
 # Перевірити статус
 docker-compose ps
 ```
 
-## Крок 2: Налаштування Laravel
-```bash
-docker-compose exec laravel-worker php artisan key:generate
-docker-compose exec laravel-worker php artisan migrate
-docker-compose exec laravel-worker php artisan db:seed
-```
 
 Сервіси будуть доступні:
 - MySQL: `localhost:3306`
