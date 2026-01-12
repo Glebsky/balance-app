@@ -1,19 +1,14 @@
 # docker-compose.yml
 x-laravel-base: &laravel-base
   build:
-    context: ./
+    context: ./laravel-project
     dockerfile: Dockerfile
   working_dir: /var/www/html
   volumes:
-    - ./:/var/www/html
-    - /var/www/html/vendor
-  environment:
-    DB_CONNECTION: mysql
-    DB_HOST: mysql
-    DB_PORT: 3306
-    DB_DATABASE: ${DB_DATABASE}
-    DB_USERNAME: ${DB_USERNAME}
-    DB_PASSWORD: ${DB_PASSWORD}
+    - ./laravel-project:/var/www/html
+    - laravel_vendor:/var/www/html/vendor
+  env_file:
+    - ./laravel-project/.env
   depends_on:
     mysql:
       condition: service_healthy
@@ -31,13 +26,32 @@ services:
     ports:
       - "3307:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
-      MYSQL_DATABASE: ${DB_DATABASE}
-      MYSQL_USER: ${DB_USERNAME}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: laravel
+      MYSQL_DATABASE: laravel_db
+      MYSQL_USER: laravel
+      MYSQL_PASSWORD: laravel
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./docker/mysql/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - balance
+
+  mysql-go:
+    image: mysql:8.0
+    container_name: balance-mysql-go
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql_go_data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: go
+      MYSQL_DATABASE: go_db
+      MYSQL_USER: go
+      MYSQL_PASSWORD: go
     healthcheck:
       test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
       interval: 5s
@@ -77,40 +91,26 @@ services:
     command: php artisan queue:work --sleep=1 --tries=3 --timeout=60 --max-jobs=1000
 
   go-worker:
-   build:
-     context: ./go-service
-     dockerfile: Dockerfile
-   container_name: balance-go-worker
-   environment:
-     DB_HOST: mysql
-     DB_PORT: 3306
-     RABBITMQ_HOST: rabbitmq
-     DB_DATABASE: ${GO_DB_DATABASE}
-     DB_USERNAME: ${GO_DB_USERNAME}
-     DB_PASSWORD: ${GO_DB_PASSWORD}
-     RABBITMQ_USER: ${RABBITMQ_USER}
-     RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
-     RABBITMQ_VHOST: /
-     RABBITMQ_QUEUE: ${GO_RABBITMQ_QUEUE}
-     RABBITMQ_PREFETCH: ${GO_RABBITMQ_PREFETCH}
-     RABBITMQ_WORKERS: ${GO_RABBITMQ_WORKERS}
-     BATCH_SIZE: ${GO_BATCH_SIZE}
-     BATCH_INTERVAL_SECONDS: ${GO_BATCH_INTERVAL}
-     SYNC_INTERVAL_SECONDS: ${GO_SYNC_INTERVAL}
-     SYNC_BATCH_SIZE: ${GO_SYNC_BATCH_SIZE}
-     RABBITMQ_PORT: 5672
-   depends_on:
-     mysql:
-       condition: service_healthy
-     rabbitmq:
-       condition: service_healthy
-   restart: unless-stopped
-   networks:
-     - balance
+    build:
+      context: ./go-project
+      dockerfile: Dockerfile
+    container_name: balance-go-worker
+    env_file:
+      - ./go-project/.env
+    depends_on:
+      mysql-go:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - balance
+    restart: unless-stopped
 
 volumes:
   mysql_data:
+  mysql_go_data:
   rabbitmq_data:
+  laravel_vendor:
 
 networks:
   balance:
