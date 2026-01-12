@@ -12,30 +12,15 @@
 
 
 ```bash
-# 1. Запустити інфраструктуру
-
-docker-compose up -d
+# 1. Налаштувати інфраструктуру
+cp ./go-project/.env.example ./go-project/.env
+cp ./laravel-project/.env.example ./laravel-project/.env
 
 # 2. Налаштувати Laravel
-```
-
-## Крок 1: Запуск інфраструктури (Docker Compose)
-```bash
-cp .env.example .env
-docker compose build
-```
-
-## Крок 2: Налаштування Laravel
-```bash
 docker compose run --rm laravel-worker bash -c "php artisan key:generate && php artisan migrate:fresh --seed"
-```
 
-## Крок 3:  Запуск docker
-```bash
-docker-compose up -d
-
-# Перевірити статус
-docker-compose ps
+# 3. Запуск докер
+docker compose up -d
 ```
 
 
@@ -47,7 +32,7 @@ docker-compose ps
 Laravel scheduler автоматично оновлює баланси кожні 10 секунд.
 
 ##  Queue Worker (для обробки подій) - balance-laravel-worker
-Laravel scheduler автоматично оброблюэ запити до RabbitMQ.
+Laravel scheduler автоматично оброблює запити до RabbitMQ.
 
 ## Golang мікросервіс - balance-go-worker
 
@@ -104,14 +89,6 @@ Schedule::command(UpdateBalancesCommand::class)
     ->everyTenSeconds() // Змінити на ->everyFifteenSeconds() для 15 секунд
 ```
 
-### Налаштування синхронізації кешу (Go)
-
-У `docker-compose.yml` або змінних оточення:
-```yaml
-SYNC_INTERVAL_SECONDS: 30  # Інтервал синхронізації
-SYNC_BATCH_SIZE: 100        # Розмір батчу для синхронізації
-```
-
 ## Troubleshooting
 
 ### Проблеми з підключенням до RabbitMQ
@@ -132,6 +109,7 @@ docker-compose restart rabbitmq
 ```bash
 # Перевірити підключення до MySQL
 docker-compose exec mysql mysql -u laravel -laravel laravel_db
+docker-compose exec mysql-go mysql -u go -go laravel_db
 ```
 
 ### Проблеми з Go сервісом

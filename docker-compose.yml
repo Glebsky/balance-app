@@ -43,15 +43,16 @@ services:
   mysql-go:
     image: mysql:8.0
     container_name: balance-mysql-go
+    command: --default-authentication-plugin=mysql_native_password
     ports:
       - "3308:3306"
-    volumes:
-      - mysql_go_data:/var/lib/mysql
     environment:
       MYSQL_ROOT_PASSWORD: go
       MYSQL_DATABASE: go_db
       MYSQL_USER: go
       MYSQL_PASSWORD: go
+    volumes:
+      - mysql_go_data:/var/lib/mysql
     healthcheck:
       test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
       interval: 5s
@@ -82,6 +83,11 @@ services:
     <<: *laravel-base
     container_name: balance-laravel-scheduler
     command: php artisan schedule:work
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
 
   laravel-worker:
     <<: *laravel-base
@@ -89,6 +95,11 @@ services:
     environment:
       QUEUE_CONNECTION: database
     command: php artisan queue:work --sleep=1 --tries=3 --timeout=60 --max-jobs=1000
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
 
   go-worker:
     build:

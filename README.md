@@ -15,14 +15,14 @@
 
 ```bash
 # 1. Налаштувати інфраструктуру
-cp .env.example .env
-docker compose build
+cp ./go-project/.env.example ./go-project/.env
+cp ./laravel-project/.env.example ./laravel-project/.env
 
 # 2. Налаштувати Laravel
 docker compose run --rm laravel-worker bash -c "php artisan key:generate && php artisan migrate:fresh --seed"
 
 # 3. Запуск докер
-docker-compose up -d
+docker compose up -d
 ```
 
 ## Особливості реалізації

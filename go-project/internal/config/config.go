@@ -48,7 +48,7 @@ func Load() *Config {
 
 	return &Config{
 		Database: DatabaseConfig{
-			Host:     getenv("DB_HOST", "mysql"),
+			Host:     getenv("DB_HOST", "mysql-go"),
 			Port:     intFromEnv("DB_PORT", 3306),
 			User:     getenv("DB_USER", getenv("DB_USERNAME", "go")),
 			Password: getenv("DB_PASSWORD", "go"),

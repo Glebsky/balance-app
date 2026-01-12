@@ -22,7 +22,6 @@ func New(cfg config.DatabaseConfig, log *logrus.Logger) (*Database, error) {
 		"%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4&collation=utf8mb4_unicode_ci",
 		cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.DBName,
 	)
-    dsn = "go:go@tcp(mysql:3306)/go_db?parseTime=true&charset=utf8mb4&collation=utf8mb4_unicode_ci"
 
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
